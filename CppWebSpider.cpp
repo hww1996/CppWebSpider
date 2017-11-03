@@ -58,6 +58,19 @@ vector<string> split(string target,string s){
     return string_list;
 }
 
+string join(vector<string> string_list,string s){
+    size_t n=string_list.size();
+    if(n==0)
+        return "";
+
+    string ans=string_list[0];
+    for(size_t i=1;i<n;i++){
+        ans=ans+s+string_list[i];
+    }
+
+    return ans;
+}
+
 struct cookie_struct {
     string name;
     string value;
@@ -69,34 +82,97 @@ struct cookie_struct {
 class CookieJar{
 public:
     CookieJar():cookie_map(unordered_map<string,vector<cookie_struct> >()){}
-	//add cookie
-    void add(string host,string uri,vector<cookie_struct> cookie_list){
 
+
+    //add the cookie
+    void add(string host,vector<cookie_struct> cookie_list){
+        size_t n=cookie_list.size();
+        for(size_t i=0;i<n;i++){
+            if(cookie_list[i].domain.empty()){
+                add_helper(host,cookie_list[i]);
+            }
+            else{
+                add_helper(cookie_list[i].domain,cookie_list[i]);
+            }
+        }
     }
-	
-	//to use cookie
+
+    // return the cookie it need
     string use(string host,string uri){
-        return "";
+        size_t n=host.size();
+        string ans="";
+        for(size_t i=0;i<n;i++){
+            string temp=use_helper(host.substr(i),uri);
+            if(ans.size()!=0&&temp.size()!=0)
+                ans+=";";
+            ans+=temp;
+        }
+
+        return ans;
     }
-	
-	//clear the cookiejar
     void clear(){
         this->cookie_map.clear();
     }
 private:
+    void add_helper(string host,cookie_struct cs){
+
+        if(cookie_map.find(host)==cookie_map.end()){
+
+            cookie_map[host]=vector<cookie_struct>();
+            if(cs.value.size()!=0)
+                cookie_map[host].push_back(cs);
+
+        }
+        else{
+
+            size_t j=0;
+
+            while(j<cookie_map[host].size()){
+
+                if(cookie_map[host][j].name==cs.name){
+                    cookie_map[host].erase(j+cookie_map[host].begin());
+                    break;
+                }
+
+                j++;
+            }
+            if(cs.value.size()!=0)
+                cookie_map[host].push_back(cs);
+        }
+    }
+
+    string use_helper(string host,string uri){
+        string ans="";
+        if(cookie_map.find(host)!=cookie_map.end()){
+            vector<cookie_struct> vcst=cookie_map[host];
+            for(size_t i=0;i<vcst.size();i++){
+                size_t pos=0;
+                if((pos=uri.find(vcst[i].path))!=uri.npos){
+                    if(pos==0){
+                        if(ans.size()!=0)
+                            ans+=";";
+                        ans=ans+vcst[i].name+"="+vcst[i].value;
+                    }
+                }
+            }
+        }
+        return ans;
+    }
+
     unordered_map<string,vector<cookie_struct>> cookie_map;
 };
 
 class response{
 public:
-    response(string host,string uri,string content):status_code(-1),
+    response(string host,string uri,string content,CookieJar *cookie):status_code(-1),
                                                     protocol(""),
                                                     host(host),
                                                     uri(uri),
                                                     content(""),
                                                     headers(unordered_map<string,string>())
     {
-        parse(content);
+        if(content.size()!=0)
+            parse(content,cookie);
     }
     int get_status_code() const{
         return this->status_code;
@@ -111,24 +187,24 @@ public:
         return this->headers;
     };
 private:
-    void parse(string content){
+    void parse(string content,CookieJar *cookie){
         size_t pos=0;
         if((pos=content.find("\r\n\r\n"))==content.npos){
             cerr<<"get information error"<<endl;
             return;
         }
         string header=content.substr(0,pos);
-        parse_header(header);
+        parse_header(header,cookie);
         this->content=content.substr(pos+4);
         return;
     }
-    void parse_header(string header){
+    void parse_header(string header,CookieJar *cookie){
         vector<string> sheader=split(header,"\r\n");
         if(sheader.size()==0)
             return;
         string first_line=sheader[0];
         vector<string> fvec=split(first_line," ");
-        if(fvec.size()!=3){
+        if(fvec.size()<3){
             cerr<<"It's not http protocol."<<endl;
             return;
         }
@@ -159,16 +235,17 @@ private:
                 string name="";
                 string value="";
                 if((kvpos=cookie_split[0].find("="))!=cookie_split[0].npos){
-                    name=cookie_split[0].substr(0,kvpos);
-                    value=cookie_split[0].substr(kvpos+1);
+                    name=strip(cookie_split[0].substr(0,kvpos));
+                    value=strip(cookie_split[0].substr(kvpos+1));
                 }
+
                 cs.name=name;
                 cs.value=value;
 
                 for(size_t j=1;j<cookie_split.size();j++){
                     if((kvpos=cookie_split[j].find("="))!=cookie_split[j].npos){
-                        name=cookie_split[j].substr(0,kvpos);
-                        value=cookie_split[j].substr(kvpos+1);
+                        name=strip(cookie_split[j].substr(0,kvpos));
+                        value=strip(cookie_split[j].substr(kvpos+1));
                     }
                     if(name=="expires"||name=="Expires"){
                         cs.expires=value;
@@ -178,11 +255,12 @@ private:
                         cs.domain=value;
                     }
                 }
-
-                cookie_list.push_back(cs);
+                if(cs.name.size()!=0)
+                    cookie_list.push_back(cs);
             }
         }
-
+        if(cookie!=NULL)
+            cookie->add(this->host,cookie_list);
         return;
     }
 
@@ -197,14 +275,14 @@ private:
 class requests{
 public:
     requests()= default;
-    string get(string host,string uri,uint16_t port,
+    response get(string host,string uri,uint16_t port,
                unordered_map<string,string> headers=unordered_map<string,string>(),
                unordered_map<string,string> data=unordered_map<string,string>(),
-               unordered_map<string,string> cookie=unordered_map<string,string>(),
+               CookieJar *cookie=NULL,
                int timeout=3){
         int sockfd;
         if((sockfd=init(host,port))<0)
-            return "";
+            return response(host,uri,"",cookie);
 
         int data_count=0;
         if(data.size()!=0)
@@ -220,18 +298,22 @@ public:
                 "GET "+uri+" HTTP/1.1\r\n"+
                 "Host: "+ host+"\r\n";
 
-        sendmsg=make_header(sendmsg,headers,cookie);
-        return this->request_and_recv(host,uri,sockfd,sendmsg,timeout);
+        sendmsg=make_header(sendmsg,host,uri,headers,cookie);
+
+        response res=this->request_and_recv(host,uri,sockfd,sendmsg,cookie,timeout);
+        close(sockfd);
+
+        return res;
     }
-    string post(string host,string uri,uint16_t port,
+    response post(string host,string uri,uint16_t port,
                 unordered_map<string,string> headers=unordered_map<string,string>(),
                 string json_data="",
                 unordered_map<string,string> data=unordered_map<string,string>(),
-                unordered_map<string,string> cookie=unordered_map<string,string>(),
+                CookieJar *cookie=NULL,
                 int timeout=3){
         int sockfd;
         if((sockfd=init(host,port))<0)
-            return "";
+            return response(host,uri,"",cookie);;
 
         string post_data="";
         if(json_data.size()!=0)
@@ -255,33 +337,40 @@ public:
                 "POST "+uri+" HTTP/1.1\r\n"+
                 "Host: "+ host+"\r\n";
 
-        sendmsg=make_header(sendmsg,headers,cookie);
+        sendmsg=make_header(sendmsg,host,uri,headers,cookie);
         sendmsg+=post_data;
 
-        string res=this->request_and_recv(host,uri,sockfd,sendmsg,timeout);
+        response res=this->request_and_recv(host,uri,sockfd,sendmsg,cookie,timeout);
         close(sockfd);
 
         return res;
     }
 private:
-    string request_and_recv(string host,string uri,int sockfd,string headers,int timeout){
+    response request_and_recv(string host,
+                            string uri,
+                            int sockfd,
+                            string headers,
+                            CookieJar *cookie,
+                            int timeout){
         //request
 
         ssize_t write_count=0;
 
+
+
         if((write_count=write(sockfd,headers.c_str(),headers.size()))<0){
             cerr<<"write error"<<endl;
-            return "";
+            return response(host,uri,"",cookie);
         }
         if(write_count!=headers.size()){
             cerr<<"write error"<<endl;
-            return "";
+            return response(host,uri,"",cookie);
         }
 
         //for the Server down.
         if(errno==EPIPE){
             cerr<<"Server Shutdown.Please Try again."<<endl;
-            return "";
+            return response(host,uri,"",cookie);
         }
 
 
@@ -302,7 +391,7 @@ private:
                 break;
             else if(nready==-1){
                 cerr<<"poll error."<<endl;
-                return "";
+                return response(host,uri,"",cookie);
             }
             if(clientfds[0].revents&POLLIN){
                 read_count=read(sockfd,buf,sizeof(buf)-1);
@@ -320,23 +409,21 @@ private:
 
         if(read_count<0){
             cerr<<"read error."<<endl;
-            return "";
+            return response(host,uri,"",cookie);
         }
 
-        cout<<ans<<endl;
-        cout<<"-----------------------------"<<endl;
+        //cout<<ans<<endl;
+        //cout<<"-----------------------------"<<endl;
 
-        if(ans.size()!=0){
-            response r=response(host,uri,ans);
-        }
-
-        return ans;
+        return response(host,uri,ans,cookie);
     }
 
     //create the headers
     string make_header(string base_header,
+                       string host,
+                       string uri,
                        const unordered_map<string,string> &headers,
-                       const unordered_map<string,string> &cookie){
+                       CookieJar *cookie){
         unordered_map<string,bool> base_usage{
                 {"Connection",false},
                 {"Accept",false},
@@ -359,8 +446,11 @@ private:
             }
         }
 
-        for(auto cookie_iter=cookie.begin();cookie_iter!=cookie.end();++cookie_iter){
-            base_header=base_header+"Cookie: "+cookie_iter->first+"="+cookie_iter->second+"\r\n";
+        if(cookie!=NULL){
+            string c=cookie->use(host,uri);
+            if(!c.empty()){
+                base_header=base_header+"Cookie: "+c+"\r\n";
+            }
         }
 
         base_header+="\r\n";
@@ -399,9 +489,12 @@ private:
 
 int main() {
     requests r;
+    CookieJar cj;
     /*r.post("192.168.1.242","/query",80,unordered_map<string,string>(),"",{
             {"fname","male"},
     });*/
-    r.get("ids1.hfut.edu.cn","/amserver/UI/Login",80);
+    r.get("ids1.hfut.edu.cn","/amserver/UI/Login",80,{},{},&cj);
+    response res=r.get("my.hfut.edu.cn","/",80,{},{},&cj);
+    cout<<res.get_content()<<endl;
     return 0;
 }
