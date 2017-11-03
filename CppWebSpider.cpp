@@ -8,6 +8,7 @@
 #include<vector>
 using namespace std;
 
+//除去target中左右有s字符串的地方
 string strip(string target,string s=" "){
     size_t n=s.size(),m=target.size();
     if(m<n)
@@ -43,7 +44,7 @@ string strip(string target,string s=" "){
     string ans=target.substr(start,end-start);
     return ans;
 }
-
+//split函数
 vector<string> split(string target,string s){
     size_t pos=0,n=s.size();
     vector<string> string_list;
@@ -57,7 +58,7 @@ vector<string> split(string target,string s){
         string_list.push_back(target);
     return string_list;
 }
-
+//join函数
 string join(vector<string> string_list,string s){
     size_t n=string_list.size();
     if(n==0)
@@ -70,7 +71,7 @@ string join(vector<string> string_list,string s){
 
     return ans;
 }
-
+//版本比较低的cookie的结构
 struct cookie_struct {
     string name;
     string value;
@@ -79,15 +80,30 @@ struct cookie_struct {
     string domain;
 };
 
+/*
+	1.cookie的存储的思想用了想chrome的方式，按domain来作为key来存放cookie
+	2.cookie的算法主要还是用了一篇博客中对cookie的描述，博客地址：
+		http://bubkoo.com/2014/04/21/http-cookies-explained/
+	3.只支持有名字的cookie：
+				Set-Cookie: name=value;...
+		但是不支持：
+				Set-Cookie: value;...
+	4.现在暂时不支持对时间(expires)的处理
+*/
 class CookieJar{
 public:
     CookieJar():cookie_map(unordered_map<string,vector<cookie_struct> >()){}
 
-
-    //add the cookie
+	/*
+		作用：添加cookie到cookie_map里面
+		参数：
+			host 		爬取的url的host
+			cookie_list 从response里面parse以后得到的Set-Cookie的数组
+	*/
     void add(string host,vector<cookie_struct> cookie_list){
         size_t n=cookie_list.size();
         for(size_t i=0;i<n;i++){
+			//判断是否有domain，假如没有的话就以当前的host为domain
             if(cookie_list[i].domain.empty()){
                 add_helper(host,cookie_list[i]);
             }
@@ -97,11 +113,17 @@ public:
         }
     }
 
-    // return the cookie it need
+	/*
+		作用：返回当前的url能够使用的cookie，以name=value;name=value;...的方式
+		参数：
+			host	爬取的url的host
+			uri		要爬取的资源
+	*/
     string use(string host,string uri){
         size_t n=host.size();
         string ans="";
         for(size_t i=0;i<n;i++){
+			//temp是从头开始将host减少，看其与那个cookie匹配的值；
             string temp=use_helper(host.substr(i),uri);
             if(ans.size()!=0&&temp.size()!=0)
                 ans+=";";
@@ -110,15 +132,23 @@ public:
 
         return ans;
     }
+	
+	//作用清除cookie，可以相当于将网页关闭，然后重新访问。
     void clear(){
         this->cookie_map.clear();
     }
 private:
+	/*
+		作用：将cookie真正的添加到cookie_map里面
+		参数：
+			host 	爬取的url的host
+			cs		想要添加到cookie_map的cookie
+	*/
     void add_helper(string host,cookie_struct cs){
-
         if(cookie_map.find(host)==cookie_map.end()){
 
             cookie_map[host]=vector<cookie_struct>();
+			//假如为空就不添加了
             if(cs.value.size()!=0)
                 cookie_map[host].push_back(cs);
 
@@ -126,7 +156,7 @@ private:
         else{
 
             size_t j=0;
-
+			//找到那个跟要添加的cookie重名的cookie，删除他，然后重新添加。
             while(j<cookie_map[host].size()){
 
                 if(cookie_map[host][j].name==cs.name){
@@ -136,17 +166,24 @@ private:
 
                 j++;
             }
+			//假如value为空就不添加，相当于删除了这个cookie
             if(cs.value.size()!=0)
                 cookie_map[host].push_back(cs);
         }
     }
-
+	/*
+		作用：根据当前的host和uri取出可用的cookie，并以以name=value;name=value;...的方式返回
+		参数：
+			host 	当前的host
+			uri		当前的uri
+	*/
     string use_helper(string host,string uri){
         string ans="";
         if(cookie_map.find(host)!=cookie_map.end()){
             vector<cookie_struct> vcst=cookie_map[host];
             for(size_t i=0;i<vcst.size();i++){
                 size_t pos=0;
+				//根据uri来查找匹配cookie中的path，看path是否为uri的前缀。
                 if((pos=uri.find(vcst[i].path))!=uri.npos){
                     if(pos==0){
                         if(ans.size()!=0)
@@ -158,12 +195,23 @@ private:
         }
         return ans;
     }
-
+	//所有使用了这个CookieJar的cookie的保存容器
     unordered_map<string,vector<cookie_struct>> cookie_map;
 };
 
+/*
+	处理放回的数据
+*/
 class response{
 public:
+	/*
+		作用：构造函数
+		参数：
+			host	当前爬取的url的host
+			uri		想要爬取的资源
+			content	爬虫返回的原始的的http数据
+			cookie	CookieJar的容器
+	*/
     response(string host,string uri,string content,CookieJar *cookie):status_code(-1),
                                                     protocol(""),
                                                     host(host),
@@ -171,24 +219,36 @@ public:
                                                     content(""),
                                                     headers(unordered_map<string,string>())
     {
+		//假如爬虫返回的原始的的http数据不为空才parse
         if(content.size()!=0)
             parse(content,cookie);
     }
+	//返回爬取的status_code
     int get_status_code() const{
         return this->status_code;
     }
+	//返回爬取的内容
     string get_content() const{
         return this->content;
     }
+	//返回爬取的协议
     string get_protocol() const{
         return this->protocol;
     }
+	//返回一些response头
     unordered_map<string,string> get_headers() const{
         return this->headers;
     };
 private:
+	/*
+		作用：处理爬虫返回的原始的的http数据
+		参数：
+			content	爬虫返回的原始的的http数据
+			cookie	CookieJar的容器
+	*/
     void parse(string content,CookieJar *cookie){
         size_t pos=0;
+		//http的格式在正文和返回头之间的有一个\r\n
         if((pos=content.find("\r\n\r\n"))==content.npos){
             cerr<<"get information error"<<endl;
             return;
@@ -198,12 +258,20 @@ private:
         this->content=content.substr(pos+4);
         return;
     }
+	/*
+		作用：处理返回的http头部。
+		参数：
+			header	返回的http头部
+			cookie	CookieJar的容器
+	*/
     void parse_header(string header,CookieJar *cookie){
+		//分行
         vector<string> sheader=split(header,"\r\n");
         if(sheader.size()==0)
             return;
         string first_line=sheader[0];
         vector<string> fvec=split(first_line," ");
+		//假如第一行没有两空格以上的话，就为错误
         if(fvec.size()<3){
             cerr<<"It's not http protocol."<<endl;
             return;
@@ -219,14 +287,16 @@ private:
                 cerr<<"It's not http protocol."<<endl;
                 return;
             }
-
+			
             string header_key=sheader[i].substr(0,header_pos);
             string header_value=sheader[i].substr(header_pos+1);
             header_value=strip(header_value);
-
+			
+			//假如不是Set-Cookie这种的话就全部丢进headers这个map里面，让操作者处理
             if(header_key!="Set-Cookie"&&header_key!="Set-cookie"&&header_key!="set-cookie"){
                 this->headers[header_key]=header_value;
             }else{
+				//cookie第一个一般为name=value，所以先split分号获得name=value这种东西。
                 vector<string> cookie_split=split(header_value,";");
                 if(cookie_split.size()==0)
                     continue;
@@ -234,6 +304,7 @@ private:
                 size_t kvpos=0;
                 string name="";
                 string value="";
+				//将name和value分出来
                 if((kvpos=cookie_split[0].find("="))!=cookie_split[0].npos){
                     name=strip(cookie_split[0].substr(0,kvpos));
                     value=strip(cookie_split[0].substr(kvpos+1));
@@ -241,12 +312,14 @@ private:
 
                 cs.name=name;
                 cs.value=value;
-
+				
                 for(size_t j=1;j<cookie_split.size();j++){
+					//将name和value分出来
                     if((kvpos=cookie_split[j].find("="))!=cookie_split[j].npos){
                         name=strip(cookie_split[j].substr(0,kvpos));
                         value=strip(cookie_split[j].substr(kvpos+1));
                     }
+					//将支持的字段分出来
                     if(name=="expires"||name=="Expires"){
                         cs.expires=value;
                     }else if(name=="path"||name=="Path"){
@@ -263,12 +336,17 @@ private:
             cookie->add(this->host,cookie_list);
         return;
     }
-
+	//返回的状态码
     int status_code=-1;
+	//使用的协议
     string protocol="";
+	//爬取的url的host
     string host;
+	//请求的资源
     string uri;
+	//返回的html数据
     string content="";
+	//一些http的返回头的数据
     unordered_map<string,string> headers;
 };
 
