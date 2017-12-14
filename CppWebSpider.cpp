@@ -81,14 +81,14 @@ struct cookie_struct {
 };
 
 /*
-	1.cookie的存储的思想用了想chrome的方式，按domain来作为key来存放cookie
-	2.cookie的算法主要还是用了一篇博客中对cookie的描述，博客地址：
-		http://bubkoo.com/2014/04/21/http-cookies-explained/
-	3.只支持有名字的cookie：
-				Set-Cookie: name=value;...
-		但是不支持：
-				Set-Cookie: value;...
-	4.现在暂时不支持对时间(expires)的处理
+1.cookie的存储的思想用了想chrome的方式，按domain来作为key来存放cookie
+2.cookie的算法主要还是用了一篇博客中对cookie的描述，博客地址：
+	http://bubkoo.com/2014/04/21/http-cookies-explained/
+3.只支持有名字的cookie：
+			Set-Cookie: name=value;...
+	但是不支持：
+			Set-Cookie: value;...
+4.现在暂时不支持对时间(expires)的处理
 */
 class CookieJar{
 public:
