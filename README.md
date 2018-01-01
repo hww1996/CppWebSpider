@@ -14,6 +14,6 @@
 ### 编译
 	$ make
 ### 使用
-先定义`request`对象，然后使用`get`或者`post`方法，返回为`response`对象。
+先定义`CppWebSpider::request`对象，然后使用`get`或者`post`方法，返回为`CppWebSpider::response`对象。
 
 可以参考一下`main.cpp`中的代码，已测试通过。
