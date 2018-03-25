@@ -1,0 +1,8 @@
+project(SPIDER_LIB)
+cmake_minimum_required(VERSION 2.8)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+include_directories("include")
+aux_source_directory("src" src_list)
+add_library(CppWebSpider SHARED ${src_list})
+add_executable(WebSpider main.cpp)
+target_link_libraries(WebSpider CppWebSpider)
