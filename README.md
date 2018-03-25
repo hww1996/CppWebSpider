@@ -12,6 +12,14 @@
 ***
 
 ### 编译
+1.makefile编译
+
+	$ make
+2.cmake编译（在根目录下）
+
+	$ mkdir build
+	$ cd build
+	$ cmake ..
 	$ make
 ### 使用
 先定义`CppWebSpider::request`对象，然后使用`get`或者`post`方法，返回为`CppWebSpider::response`对象。
